@@ -7,8 +7,27 @@ fields exist for them yet). It never touches the database directly; it calls a s
 API-key-protected endpoints on `pinewraps-api`.
 
 ```
-Claude Cowork ── Bearer token ──> pinewraps-mcp (this repo) ── x-api-key ──> pinewraps-api
+Claude Cowork ── OAuth access token ──> pinewraps-mcp (this repo) ── x-api-key ──> pinewraps-api
 ```
+
+## Auth model
+
+Claude Cowork's connector setup only supports OAuth (it auto-discovers and dynamically
+registers a client against the server URL — a static bearer header isn't an option in that
+flow). This server implements a minimal single-tenant OAuth 2.1 authorization server
+(`src/oauth/`) using the SDK's built-in auth router:
+
+1. Cowork registers itself as an OAuth client (open registration — anyone can register a
+   *client*, that's normal for dynamic client registration).
+2. Cowork sends you to `/authorize`, which redirects to this server's own consent page
+   (`src/oauth/consent.ts`) asking for `MCP_SERVER_ACCESS_TOKEN` — a one-time password gate.
+   This is the actual security boundary: only someone who knows that token can turn a
+   registered client into an approved one.
+3. On success, real OAuth access + refresh tokens are issued (1 hour access token lifetime,
+   rotating refresh tokens). `/mcp` requests are verified against those, not the raw secret.
+
+Registered clients and refresh tokens are persisted to `data/oauth-store.json` so a process
+restart doesn't force reconnecting the connector (see `src/oauth/store.ts` for the tradeoffs).
 
 ## Setup
 
@@ -19,12 +38,13 @@ Claude Cowork ── Bearer token ──> pinewraps-mcp (this repo) ── x-api
    npm install
    ```
 3. Copy `.env.example` to `.env` and fill in:
+   - `PUBLIC_URL` — this server's own public URL (`http://localhost:3900` locally).
    - `PINEWRAPS_API_URL` — e.g. `http://localhost:3001` locally, or the deployed
      `pinewraps-api` URL in production.
    - `PINEWRAPS_API_KEY` — same value as `MCP_API_KEY` set on `pinewraps-api`.
-   - `MCP_SERVER_ACCESS_TOKEN` — a separate long random secret
-     (`openssl rand -hex 32`). This is what you enter when adding this server as a
-     connector in Claude — it stops anyone else from calling your MCP server.
+   - `MCP_SERVER_ACCESS_TOKEN` — a separate long random secret (`openssl rand -hex 32`).
+     This is the password you type into the consent page the first time you connect —
+     it's what stops anyone else from approving a connection to your server.
 4. Run it:
    ```bash
    npm run dev
@@ -46,31 +66,29 @@ Claude Cowork ── Bearer token ──> pinewraps-mcp (this repo) ── x-api
 
 None of these tools change URL slugs — see `api-integration/README.md` for why.
 
-## Verifying locally with MCP Inspector
+## Verifying locally
 
-With the server running (`npm run dev`) and pointed at a local `pinewraps-api`:
-
-```bash
-npx @modelcontextprotocol/inspector
-```
-
-Connect to `http://localhost:3900/mcp` using "Streamable HTTP", with header
-`Authorization: Bearer <your MCP_SERVER_ACCESS_TOKEN>`. You should see all 9 tools listed and
-be able to call them directly.
+With the server running (`npm run dev`) and pointed at a local `pinewraps-api`, drive the OAuth
+flow by hand with curl (register → authorize → approve on the consent page → exchange code for
+a token → call a tool) or point `npx @modelcontextprotocol/inspector` at `http://localhost:3900/mcp`
+and let it walk the OAuth flow itself.
 
 ## Deploying
 
-Deploy like any Node HTTP service (e.g. a second Render web service alongside `pinewraps-api`):
+Deploy like any Node HTTP service (this has been run on Railway; Render works the same way):
 
 ```bash
 npm run build
 npm start
 ```
 
-Set `PORT`, `PINEWRAPS_API_URL`, `PINEWRAPS_API_KEY`, and `MCP_SERVER_ACCESS_TOKEN` in the
-hosting platform's environment settings. Then add `https://<your-deployed-host>/mcp` as a
-remote connector in Claude Cowork, with the bearer token you generated.
+Set `PUBLIC_URL` (your deployed URL), `PINEWRAPS_API_URL`, `PINEWRAPS_API_KEY`, and
+`MCP_SERVER_ACCESS_TOKEN` in the hosting platform's environment settings. Leave `PORT` unset if
+the host injects its own (Railway and Render both do). Then in Claude Cowork, add
+`https://<your-deployed-host>/mcp` as a connector — it will register itself and send you to the
+consent page, where you enter `MCP_SERVER_ACCESS_TOKEN` once to approve it.
 
-**Before deploying**, confirm how Claude Cowork's "add connector" flow actually authenticates
-to a self-hosted remote MCP server — if it only supports OAuth and not a static bearer token,
-`src/auth.ts` needs a small OAuth shim instead of the current header check.
+For durability across full redeploys (not just process restarts), mount a persistent volume at
+the directory holding `data/oauth-store.json` (see `OAUTH_STORE_PATH` in `.env.example`) —
+otherwise a redeploy just means reconnecting the connector once, which is a minor inconvenience,
+not a functional problem.
