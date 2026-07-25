@@ -18,6 +18,10 @@ update_*_seo with only the fields you want to change.
 It also manages redirects (list_redirects, get_redirect, create_redirect, update_redirect). If you ever
 do need to change a URL that's already indexed or linked elsewhere, create a redirect from the old path
 to the new one rather than just changing content — that's how old links and search rankings stay intact.
+
+Collections also have an FAQ accordion (update_collection_seo's faqs field) shown on the collection page
+next to the "Read more" description toggle. It's a full-list replace, not per-item — always fetch the
+current list with get_collection_seo first if you're editing rather than fully rewriting it.
 `.trim();
 
 export function buildMcpServer(api: AxiosInstance): McpServer {

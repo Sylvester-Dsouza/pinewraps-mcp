@@ -206,17 +206,40 @@ export const getCollectionForSeo = async (req: Request, res: Response, next: Nex
   }
 };
 
+const isValidFaqsPayload = (faqs: unknown): faqs is { question: string; answer: string }[] => {
+  return (
+    Array.isArray(faqs) &&
+    faqs.every(
+      (item) =>
+        item &&
+        typeof item === 'object' &&
+        typeof (item as any).question === 'string' &&
+        (item as any).question.trim().length > 0 &&
+        typeof (item as any).answer === 'string' &&
+        (item as any).answer.trim().length > 0
+    )
+  );
+};
+
 export const updateCollectionSeoForMcp = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    const { seoTitle, seoDescription, seoKeywords } = req.body;
+    const { seoTitle, seoDescription, seoKeywords, faqs } = req.body;
+
+    if (faqs !== undefined && !isValidFaqsPayload(faqs)) {
+      throw new ApiError({
+        message: 'faqs must be an array of { question: non-empty string, answer: non-empty string }',
+        statusCode: 400
+      });
+    }
 
     const updated = await prisma.collection.update({
       where: { id },
       data: {
         ...(seoTitle !== undefined && { seoTitle }),
         ...(seoDescription !== undefined && { seoDescription }),
-        ...(seoKeywords !== undefined && { seoKeywords })
+        ...(seoKeywords !== undefined && { seoKeywords }),
+        ...(faqs !== undefined && { faqs })
       }
     });
 

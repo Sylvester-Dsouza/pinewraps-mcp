@@ -39,7 +39,8 @@ export function registerCollectionTools(server: McpServer, api: AxiosInstance): 
       title: 'Get collection SEO detail',
       description:
         'Get full detail for one Pinewraps collection needed to write good SEO copy: name, description, ' +
-        'content, and current seoTitle/seoDescription/seoKeywords.',
+        'content, current seoTitle/seoDescription/seoKeywords, and current faqs (the "Read FAQ" accordion ' +
+        'shown on the collection page).',
       inputSchema: {
         id: z.string().describe('Collection ID (as returned by list_collections_seo)')
       }
@@ -58,17 +59,32 @@ export function registerCollectionTools(server: McpServer, api: AxiosInstance): 
     'update_collection_seo',
     {
       title: 'Update collection SEO',
-      description: `Update SEO metadata for a Pinewraps collection. ${SEO_GUIDANCE} Does not change the URL slug.`,
+      description:
+        `Update SEO metadata for a Pinewraps collection. ${SEO_GUIDANCE} Does not change the URL slug. ` +
+        'faqs sets the "Read FAQ" accordion shown on the collection page next to the "Read more" ' +
+        'description toggle — pass the complete desired list (call get_collection_seo first to see the ' +
+        'current one), as this replaces the whole list rather than appending to it. Keep answers concise ' +
+        'and specific to this collection; Pinewraps ships across Dubai/UAE so delivery-related FAQs can ' +
+        'mention that.',
       inputSchema: {
         id: z.string().describe('Collection ID'),
         seoTitle: z.string().max(70).optional(),
         seoDescription: z.string().max(200).optional(),
-        seoKeywords: z.array(z.string()).optional()
+        seoKeywords: z.array(z.string()).optional(),
+        faqs: z
+          .array(
+            z.object({
+              question: z.string().min(1),
+              answer: z.string().min(1)
+            })
+          )
+          .optional()
+          .describe('Full replacement list for the FAQ accordion, in display order')
       }
     },
     async ({ id, ...rest }) => {
-      if (!rest.seoTitle && !rest.seoDescription && !rest.seoKeywords) {
-        return toToolError(new Error('Provide at least one of seoTitle, seoDescription, or seoKeywords'));
+      if (!rest.seoTitle && !rest.seoDescription && !rest.seoKeywords && !rest.faqs) {
+        return toToolError(new Error('Provide at least one of seoTitle, seoDescription, seoKeywords, or faqs'));
       }
       try {
         const { data } = await api.put(`/api/mcp/collections/${encodeURIComponent(id)}/seo`, rest);

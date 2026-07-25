@@ -59,7 +59,7 @@ restart doesn't force reconnecting the connector (see `src/oauth/store.ts` for t
 | `update_product_seo` | Set `metaTitle`, `metaDescription`, `metaKeywords`, and/or per-image `alt` text |
 | `list_collections_seo` | List collections, optionally filtered by name / SEO status |
 | `get_collection_seo` | Full detail for one collection |
-| `update_collection_seo` | Set `seoTitle`, `seoDescription`, `seoKeywords[]` |
+| `update_collection_seo` | Set `seoTitle`, `seoDescription`, `seoKeywords[]`, and/or the `faqs[]` accordion (full-list replace) |
 | `list_blog_posts_seo` | List blog posts, optionally filtered by title / SEO status |
 | `get_blog_post_seo` | Full detail for one blog post |
 | `update_blog_post_seo` | Set `metaTitle`, `metaDescription` |
