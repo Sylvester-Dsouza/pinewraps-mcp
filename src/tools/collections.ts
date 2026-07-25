@@ -56,6 +56,42 @@ export function registerCollectionTools(server: McpServer, api: AxiosInstance): 
   );
 
   server.registerTool(
+    'create_collection',
+    {
+      title: 'Create a collection',
+      description:
+        'Create a new Pinewraps collection. Only name is required; a URL slug is generated ' +
+        'automatically from it (uniquified if it collides with an existing one). status defaults to ' +
+        `DRAFT — set to PUBLISHED to make it live immediately. ${SEO_GUIDANCE} faqs sets the initial ` +
+        '"Read FAQ" accordion. productIds optionally adds existing products to the collection ' +
+        '(invalid/unknown IDs are silently skipped).',
+      inputSchema: {
+        name: z.string().min(1).describe('Collection name'),
+        description: z.string().optional().describe('Short description shown under the collection title'),
+        content: z.string().optional().describe('Longer rich-text/SEO content shown further down the page'),
+        status: z.enum(['DRAFT', 'PUBLISHED']).default('DRAFT'),
+        image: z.string().optional().describe('Image URL for the collection'),
+        seoTitle: z.string().max(70).optional(),
+        seoDescription: z.string().max(200).optional(),
+        seoKeywords: z.array(z.string()).optional(),
+        faqs: z
+          .array(z.object({ question: z.string().min(1), answer: z.string().min(1) }))
+          .optional()
+          .describe('Initial FAQ accordion items, in display order'),
+        productIds: z.array(z.string()).optional().describe('Existing product IDs to add to this collection')
+      }
+    },
+    async (args) => {
+      try {
+        const { data } = await api.post('/api/mcp/collections', args);
+        return toToolJson(data);
+      } catch (err) {
+        return toToolError(err);
+      }
+    }
+  );
+
+  server.registerTool(
     'update_collection_seo',
     {
       title: 'Update collection SEO',

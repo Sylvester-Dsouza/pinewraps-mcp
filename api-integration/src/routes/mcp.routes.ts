@@ -7,9 +7,11 @@ import {
   listCollectionsForSeo,
   getCollectionForSeo,
   updateCollectionSeoForMcp,
+  createCollectionForMcp,
   listBlogPostsForSeo,
   getBlogPostForSeo,
   updateBlogPostSeoForMcp,
+  createBlogPostForMcp,
   listRedirectsForMcp,
   getRedirectForMcp,
   createRedirectForMcp,
@@ -26,10 +28,12 @@ router.put('/products/:id/seo', updateProductSeoForMcp);
 
 router.get('/collections', listCollectionsForSeo);
 router.get('/collections/:id', getCollectionForSeo);
+router.post('/collections', createCollectionForMcp);
 router.put('/collections/:id/seo', updateCollectionSeoForMcp);
 
 router.get('/blogs', listBlogPostsForSeo);
 router.get('/blogs/:id', getBlogPostForSeo);
+router.post('/blogs', createBlogPostForMcp);
 router.put('/blogs/:id/seo', updateBlogPostSeoForMcp);
 
 router.get('/redirects', listRedirectsForMcp);

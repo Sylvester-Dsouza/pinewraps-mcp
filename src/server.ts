@@ -15,6 +15,11 @@ Workflow: call the relevant list_* tool (optionally filtered to status="pending"
 SEO copy, call get_*_seo for the full context on a specific item, write the copy yourself, then call
 update_*_seo with only the fields you want to change.
 
+create_collection and create_blog_post make new collections/blog posts from scratch (defaulting to
+DRAFT status so nothing goes live by accident — set status to PUBLISHED explicitly to publish
+immediately). There is no create tool for products — those are only editable for SEO on existing
+products, since creating one involves pricing, variants, and inventory beyond this server's scope.
+
 It also manages redirects (list_redirects, get_redirect, create_redirect, update_redirect). If you ever
 do need to change a URL that's already indexed or linked elsewhere, create a redirect from the old path
 to the new one rather than just changing content — that's how old links and search rankings stay intact.

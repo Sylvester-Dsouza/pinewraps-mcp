@@ -5,6 +5,8 @@ import { invalidateModelCache } from '../utils/cache-invalidation';
 import { clearCachePattern } from '../middleware/cache';
 import { RedirectService } from '../services/redirect.service';
 import { RedirectType } from '@prisma/client';
+import { generateSlug } from '../utils/slug';
+import { slugify } from '../utils/string-utils';
 
 /**
  * Endpoints behind requireApiKey for the Pinewraps SEO MCP server. Deliberately narrow:
@@ -252,6 +254,70 @@ export const updateCollectionSeoForMcp = async (req: Request, res: Response, nex
   }
 };
 
+export const createCollectionForMcp = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { name, description, content, seoTitle, seoDescription, seoKeywords, faqs, image, status, productIds } = req.body;
+
+    if (!name) {
+      throw new ApiError({ message: 'name is required', statusCode: 400 });
+    }
+
+    if (faqs !== undefined && !isValidFaqsPayload(faqs)) {
+      throw new ApiError({
+        message: 'faqs must be an array of { question: non-empty string, answer: non-empty string }',
+        statusCode: 400
+      });
+    }
+
+    // Same slug-collision handling as the blog create path — the admin panel's own
+    // collection create endpoint doesn't do this and can 500 on a name collision instead.
+    let slug = generateSlug(name);
+    const existingCollection = await prisma.collection.findUnique({ where: { slug } });
+    if (existingCollection) {
+      slug = `${slug}-${Date.now().toString().slice(-6)}`;
+    }
+
+    let validProductIds: string[] = [];
+    if (Array.isArray(productIds) && productIds.length > 0) {
+      const existingProducts = await prisma.product.findMany({
+        where: { id: { in: productIds } },
+        select: { id: true }
+      });
+      validProductIds = existingProducts.map((p) => p.id);
+    }
+
+    const collection = await prisma.collection.create({
+      data: {
+        name,
+        slug,
+        description,
+        content,
+        seoTitle: seoTitle || name,
+        seoDescription: seoDescription || description,
+        seoKeywords: seoKeywords || [],
+        faqs: faqs || [],
+        image,
+        status: status || 'DRAFT',
+        products: {
+          create: validProductIds.map((productId: string, index: number) => ({ productId, position: index }))
+        }
+      },
+      include: {
+        products: { include: { product: { include: { images: true } } } }
+      }
+    });
+
+    res.status(201).json({ success: true, data: collection });
+
+    await invalidateModelCache('COLLECTION');
+  } catch (error) {
+    if (error instanceof ApiError) {
+      return next(error);
+    }
+    next(new ApiError({ message: error instanceof Error ? error.message : 'Failed to create collection', statusCode: 400 }));
+  }
+};
+
 // ---- Blog posts ----
 
 export const listBlogPostsForSeo = async (req: Request, res: Response, next: NextFunction) => {
@@ -319,6 +385,57 @@ export const updateBlogPostSeoForMcp = async (req: Request, res: Response, next:
     await invalidateModelCache('BLOG_POST');
   } catch (error) {
     next(error);
+  }
+};
+
+export const createBlogPostForMcp = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { title, content, excerpt, featuredImage, metaTitle, metaDescription, status, categoryIds } = req.body;
+
+    if (!title || !content) {
+      throw new ApiError({ message: 'title and content are required', statusCode: 400 });
+    }
+
+    // Same slug-collision handling as the admin panel's own blog create endpoint.
+    let slug = slugify(title);
+    const existingPost = await prisma.blogPost.findUnique({ where: { slug } });
+    if (existingPost) {
+      slug = `${slug}-${Date.now().toString().slice(-6)}`;
+    }
+
+    const publishedAt = status === 'PUBLISHED' ? new Date() : null;
+
+    const post = await prisma.blogPost.create({
+      data: {
+        title,
+        slug,
+        content,
+        excerpt,
+        featuredImage,
+        metaTitle: metaTitle || title,
+        metaDescription: metaDescription || excerpt,
+        status: status || 'DRAFT',
+        publishedAt,
+        categories: {
+          create: Array.isArray(categoryIds)
+            ? categoryIds.map((categoryId: string) => ({ category: { connect: { id: categoryId } } }))
+            : []
+        }
+      },
+      include: {
+        categories: { include: { category: true } }
+      }
+    });
+
+    res.status(201).json({ success: true, data: post });
+
+    await invalidateModelCache('SEO');
+    await invalidateModelCache('BLOG_POST');
+  } catch (error) {
+    if (error instanceof ApiError) {
+      return next(error);
+    }
+    next(new ApiError({ message: error instanceof Error ? error.message : 'Failed to create blog post', statusCode: 400 }));
   }
 };
 

@@ -55,6 +55,36 @@ export function registerBlogTools(server: McpServer, api: AxiosInstance): void {
   );
 
   server.registerTool(
+    'create_blog_post',
+    {
+      title: 'Create a blog post',
+      description:
+        'Create a new Pinewraps blog post. title and content are required (content is HTML). A URL ' +
+        'slug is generated automatically from the title (uniquified if it collides with an existing ' +
+        `one). status defaults to DRAFT — set to PUBLISHED to make it live immediately. ${SEO_GUIDANCE} ` +
+        'categoryIds optionally files it under existing blog categories.',
+      inputSchema: {
+        title: z.string().min(1),
+        content: z.string().min(1).describe('Full post body as HTML'),
+        excerpt: z.string().optional().describe('Short summary shown on blog listing pages'),
+        featuredImage: z.string().optional().describe('Featured image URL'),
+        status: z.enum(['DRAFT', 'PUBLISHED']).default('DRAFT'),
+        metaTitle: z.string().max(70).optional(),
+        metaDescription: z.string().max(200).optional(),
+        categoryIds: z.array(z.string()).optional().describe('Existing blog category IDs')
+      }
+    },
+    async (args) => {
+      try {
+        const { data } = await api.post('/api/mcp/blogs', args);
+        return toToolJson(data);
+      } catch (err) {
+        return toToolError(err);
+      }
+    }
+  );
+
+  server.registerTool(
     'update_blog_post_seo',
     {
       title: 'Update blog post SEO',
