@@ -11,8 +11,13 @@ export function toToolError(err: unknown): CallToolResult {
   let message: string;
 
   if (axios.isAxiosError(err)) {
-    const body = err.response?.data as { message?: string; error?: string } | undefined;
-    message = body?.message || body?.error || err.message || err.code || 'Request failed';
+    // pinewraps-api's real error envelope is { success: false, error: { message, code, ... } } —
+    // "error" is an object, not a string. Some hand-rolled responses instead use a flat
+    // { message } or { error: "string" }, so accept all three shapes.
+    const body = err.response?.data as { message?: string; error?: string | { message?: string } } | undefined;
+    const errorField = body?.error;
+    const nestedMessage = typeof errorField === 'object' && errorField !== null ? errorField.message : errorField;
+    message = body?.message || nestedMessage || err.message || err.code || 'Request failed';
     if (err.response?.status) {
       message = `[HTTP ${err.response.status}] ${message}`;
     }

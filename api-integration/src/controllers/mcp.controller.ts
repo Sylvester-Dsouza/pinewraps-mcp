@@ -2,16 +2,22 @@ import type { Request, Response, NextFunction } from 'express';
 import { prisma } from '../lib/prisma';
 import { ApiError } from '../utils/api-error';
 import { invalidateModelCache } from '../utils/cache-invalidation';
+import { clearCachePattern } from '../middleware/cache';
+import { RedirectService } from '../services/redirect.service';
+import { RedirectType } from '@prisma/client';
 
 /**
  * Endpoints behind requireApiKey for the Pinewraps SEO MCP server. Deliberately narrow:
- * read + SEO-field-only write for product/collection/blog. No slug editing (see the
- * AUTO_SLUG-redirect gap noted for seo.controller.ts — until that's fixed, slug changes
- * should only happen through the main product/collection/blog update endpoints, which
- * create redirects correctly), no delete, no access to orders/customers/payments/etc.
+ * read + SEO-field-only write for product/collection/blog, plus list/create/update for
+ * redirects. No slug editing (see the AUTO_SLUG-redirect gap noted for seo.controller.ts
+ * — until that's fixed, slug changes should only happen through the main
+ * product/collection/blog update endpoints, which create redirects correctly), no delete
+ * anywhere, no access to orders/customers/payments/etc.
  *
  * seoStatus mirrors the logic in seo.controller.ts's getSeoStatus (kept local here so
- * this file has no dependency on the admin SEO panel's controller).
+ * this file has no dependency on the admin SEO panel's controller). Redirect create/update
+ * reuse RedirectService directly (src/services/redirect.service.ts) so the same loop/chain
+ * detection and status-code validation the admin panel relies on applies here too.
  */
 
 type SeoType = 'product' | 'collection' | 'blog';
@@ -288,6 +294,133 @@ export const updateBlogPostSeoForMcp = async (req: Request, res: Response, next:
 
     await invalidateModelCache('SEO');
     await invalidateModelCache('BLOG_POST');
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ---- Redirects ----
+//
+// create/update reuse RedirectService directly so the same self-redirect prevention,
+// loop/chain detection, and status-code validation the admin panel gets applies here too.
+// RedirectService throws plain Errors for those validation failures (not ApiError), so we
+// catch and convert to 400s ourselves — same as the existing /api/redirects controller does.
+
+const REDIRECT_INCLUDE = {
+  product: { select: { id: true, name: true, slug: true } },
+  blogPost: { select: { id: true, title: true, slug: true } },
+  collection: { select: { id: true, name: true, slug: true } }
+} as const;
+
+export const listRedirectsForMcp = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const search = req.query.search ? String(req.query.search) : undefined;
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
+
+    const result = await RedirectService.getAllRedirects(page, limit, search);
+
+    res.json({
+      success: true,
+      data: result.data,
+      pagination: { page: result.page, limit: result.limit, total: result.total, totalPages: result.totalPages }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getRedirectForMcp = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const redirect = await prisma.redirect.findUnique({ where: { id }, include: REDIRECT_INCLUDE });
+
+    if (!redirect) {
+      throw new ApiError({ message: 'Redirect not found', statusCode: 404 });
+    }
+
+    res.json({ success: true, data: redirect });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const createRedirectForMcp = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { fromPath, toPath, statusCode, reason, productId, blogPostId, collectionId } = req.body;
+
+    if (!fromPath || !toPath) {
+      throw new ApiError({ message: 'fromPath and toPath are required', statusCode: 400 });
+    }
+
+    const redirect = await RedirectService.createRedirect({
+      fromPath,
+      toPath,
+      statusCode: statusCode || 301,
+      type: RedirectType.API_CREATED,
+      reason,
+      productId,
+      blogPostId,
+      collectionId
+    });
+
+    res.status(201).json({ success: true, data: redirect });
+
+    clearCachePattern('/api/redirects*').catch((err) => console.error('Cache invalidation error:', err));
+  } catch (error) {
+    if (error instanceof ApiError) {
+      return next(error);
+    }
+    // Validation failures from RedirectService (self-redirect, loop detection, bad status code).
+    next(new ApiError({ message: error instanceof Error ? error.message : 'Failed to create redirect', statusCode: 400 }));
+  }
+};
+
+export const updateRedirectForMcp = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const { fromPath, toPath, statusCode, reason } = req.body;
+
+    const existing = await prisma.redirect.findUnique({ where: { id } });
+    if (!existing) {
+      throw new ApiError({ message: 'Redirect not found', statusCode: 404 });
+    }
+
+    const nextFromPath = fromPath !== undefined ? fromPath : existing.fromPath;
+    const nextToPath = toPath !== undefined ? toPath : existing.toPath;
+    const nextStatusCode = statusCode !== undefined ? statusCode : existing.statusCode;
+
+    const statusValidation = RedirectService.validateStatusCode(nextStatusCode);
+    if (!statusValidation.valid) {
+      throw new ApiError({ message: statusValidation.message || 'Invalid status code', statusCode: 400 });
+    }
+
+    if (nextFromPath === nextToPath) {
+      throw new ApiError({ message: 'Cannot create redirect to the same path', statusCode: 400 });
+    }
+
+    const chainAnalysis = await RedirectService.detectRedirectChain(nextFromPath, nextToPath);
+    if (chainAnalysis.hasLoop) {
+      throw new ApiError({
+        message: `Redirect would create a loop: ${chainAnalysis.chain.join(' -> ')}`,
+        statusCode: 400
+      });
+    }
+
+    const updated = await prisma.redirect.update({
+      where: { id },
+      data: {
+        fromPath: nextFromPath,
+        toPath: nextToPath,
+        statusCode: nextStatusCode,
+        reason: reason !== undefined ? reason : existing.reason
+      },
+      include: REDIRECT_INCLUDE
+    });
+
+    res.json({ success: true, data: updated });
+
+    clearCachePattern('/api/redirects*').catch((err) => console.error('Cache invalidation error:', err));
   } catch (error) {
     next(error);
   }

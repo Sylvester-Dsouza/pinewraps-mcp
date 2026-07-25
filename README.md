@@ -63,8 +63,13 @@ restart doesn't force reconnecting the connector (see `src/oauth/store.ts` for t
 | `list_blog_posts_seo` | List blog posts, optionally filtered by title / SEO status |
 | `get_blog_post_seo` | Full detail for one blog post |
 | `update_blog_post_seo` | Set `metaTitle`, `metaDescription` |
+| `list_redirects` | List URL redirects, optionally filtered by fromPath/toPath/reason |
+| `get_redirect` | Full detail for one redirect, including linked product/collection/blog post |
+| `create_redirect` | Create a `fromPath` → `toPath` redirect (self-redirect and loop detection built in) |
+| `update_redirect` | Update `fromPath`, `toPath`, `statusCode`, and/or `reason` on an existing redirect |
 
-None of these tools change URL slugs — see `api-integration/README.md` for why.
+None of the SEO tools change URL slugs — see `api-integration/README.md` for why. Redirects are the
+correct way to actually move a URL: create one from the old path to the new one instead.
 
 ## Verifying locally
 

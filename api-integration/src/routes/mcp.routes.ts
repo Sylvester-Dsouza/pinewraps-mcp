@@ -9,7 +9,11 @@ import {
   updateCollectionSeoForMcp,
   listBlogPostsForSeo,
   getBlogPostForSeo,
-  updateBlogPostSeoForMcp
+  updateBlogPostSeoForMcp,
+  listRedirectsForMcp,
+  getRedirectForMcp,
+  createRedirectForMcp,
+  updateRedirectForMcp
 } from '../controllers/mcp.controller';
 
 const router = Router();
@@ -27,5 +31,10 @@ router.put('/collections/:id/seo', updateCollectionSeoForMcp);
 router.get('/blogs', listBlogPostsForSeo);
 router.get('/blogs/:id', getBlogPostForSeo);
 router.put('/blogs/:id/seo', updateBlogPostSeoForMcp);
+
+router.get('/redirects', listRedirectsForMcp);
+router.get('/redirects/:id', getRedirectForMcp);
+router.post('/redirects', createRedirectForMcp);
+router.put('/redirects/:id', updateRedirectForMcp);
 
 export default router;
